@@ -1,0 +1,42 @@
+准备编译找同事借的小米wifi
+直接下载mt7601的源码：git@github.com:alfmel/mt7601.git
+放到ubuntu的home区，然后先试一下直接给自己电脑编译。
+编译出现错误：
+
+make -C /lib/modules/4.4.0-47-generic/build SUBDIRS=/home/bumbeeble/mt7601/src/os/linux modules
+make[1]: Entering directory '/usr/src/linux-headers-4.4.0-47-generic'
+Makefile:691: Cannot use CONFIG_CC_STACKPROTECTOR_STRONG: -fstack-protector-strong not supported by compiler
+  CC [M]  /home/bumbeeble/mt7601/src/os/linux/../../os/linux/rt_profile.o
+gcc: 错误： unrecognized command line option ‘-fstack-protector-strong’
+scripts/Makefile.build:258: recipe for target '/home/bumbeeble/mt7601/src/os/linux/../../os/linux/rt_profile.o' failed
+
+经过各种查询，发现应该是之前编译荔枝派的内核的是否将默认的gcc版本改为了gcc-4.7,导致编译器不支持
+
+所以用原来的方式将编译器再改回到原来的gcc-5: sudo update-alternatives --config gcc
+然后选择要设为默认的编译器版本，选择gcc-5
+然后再编译
+又出错：
+/home/bumbeeble/mt7601/src/os/linux/../../sta/sta_cfg.c:5766:85: error: macro "__DATE__" might prevent reproducible builds [-Werror=date-time]
+             snprintf(extra, size, "Driver version-%s, %s %s\n", STA_DRIVER_VERSION, __DATE__, __TIME__ );
+                                                                                     ^
+/home/bumbeeble/mt7601/src/os/linux/../../sta/sta_cfg.c:5766:95: error: macro "__TIME__" might prevent reproducible builds [-Werror=date-time]
+             snprintf(extra, size, "Driver version-%s, %s %s\n", STA_DRIVER_VERSION, __DATE__, __TIME__ );
+
+打开sta_cfg.c，找到调用"__DATE__"的地方，然后使用vi的ctags查找它的定义，没找到，发现只有一个snprintf函数调用这两个宏....
+
+直接删除这句，然后编译
+编译成功。。。。
+
+然后给荔枝派编译
+查看README.md。。。一堆之后，改Makefile
+
+198 ifeq ($(PLATFORM),PC)
+199 # Linux 2.6
+200 LINUX_SRC = /lib/modules/$(shell uname -r)/build
+201 # Linux 2.4 Change to your local setting
+202 #LINUX_SRC = /usr/src/linux-2.4
+203 LINUX_SRC_MODULE = /lib/modules/$(shell uname -r)/kernel/drivers/net/wireless/
+204 CROSS_COMPILE =
+205 endif
+
+改为
