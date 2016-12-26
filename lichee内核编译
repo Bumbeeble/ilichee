@@ -1,0 +1,2 @@
+根据群主的教程，下载好代码，然后开始编译：
+make ARCH=arm a13_linux_defconfig
