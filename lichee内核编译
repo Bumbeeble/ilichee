@@ -1,2 +1,65 @@
 根据群主的教程，下载好代码，然后开始编译：
-make ARCH=arm a13_linux_defconfig
+make ARCH=arm a13_linux_defconfig               //写入内核编译的默认配置，配置结果是写入到 .config 文件中的
+
+make ARCH=arm menuconfig                        //通过命令行的menuconfig来修改内核相应配置
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j24 uImage          //编译得到内核
+make cpu架构    编译器                              编译线程   编译目标为uImage内核
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j24 INSTALL_MOD_PATH=out modules
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j24 INSTALL_MOD_PATH=out modules_install
+//编译内核模块
+然后在/lichee/linux-sunxi/out文件夹下就可以找到内核模块了。目录为：/lib/modules/3.4.104+/   ;（3.4.104+对应内核版本）
+编译好内核uImage和模块之后将他们复制到内存卡中
+
+
+uImage复制直接到fat32的文件系统的分区，uboot可以识别
+然后模块复制到文件系统（内存卡ext分区）的lib/modules/目录下。
+之后内存卡插入到板子上，上电，电脑串口可以接收到板子的打印信息，然后就出现错误了：
+
+
+先提示错误：
+<6>ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+<6>ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+WRN:L430(drivers/usb/host/sw_hci_sunxi.c):ERR: gpio_request failed
+WRN:L816(drivers/usb/host/sw_hci_sunxi.c):ERR: alloc_pin failed
+WRN:L430(drivers/usb/host/sw_hci_sunxi.c):ERR: gpio_request failed
+WRN:L816(drivers/usb/host/sw_hci_sunxi.c):ERR: alloc_pin failed
+<1>Unable to handle kernel NULL pointer dereference at virtual address 00000000
+<1>pgd = c0004000
+<1>[00000000] *pgd=00000000
+<0>Internal error: Oops: 80000005 [#1] PREEMPT ARM
+<d>Modules linked in:
+CPU: 0    Not tainted  (3.4.104+ #7)
+PC is at 0x0
+LR is at sw_ehci_hcd_probe+0xdc/0x2e4
+然后系统提示10s后重启：
+
+[<c03258fc>] (sw_ehci_hcd_probe+0xdc/0x2e4) from [<c02d5ab4>] (platform_drv_probe+0x18/0x1c)
+[<c02d5ab4>] (platform_drv_probe+0x18/0x1c) from [<c02d486c>] (driver_probe_device+0x90/0x338)
+[<c02d486c>] (driver_probe_device+0x90/0x338) from [<c02d2d3c>] (bus_for_each_drv+0x44/0x8c)
+[<c02d2d3c>] (bus_for_each_drv+0x44/0x8c) from [<c02d477c>] (device_attach+0x74/0x80)
+[<c02d477c>] (device_attach+0x74/0x80) from [<c02d3ca8>] (bus_probe_device+0x84/0xa8)
+[<c02d3ca8>] (bus_probe_device+0x84/0xa8) from [<c02d23bc>] (device_add+0x4b4/0x5a0)
+[<c02d23bc>] (device_add+0x4b4/0x5a0) from [<c02d5ed4>] (platform_device_add+0xf4/0x1e0)
+[<c02d5ed4>] (platform_device_add+0xf4/0x1e0) from [<c082d8fc>] (sw_hci_sunxi_init+0xb8/0x10c)
+[<c082d8fc>] (sw_hci_sunxi_init+0xb8/0x10c) from [<c0008640>] (do_one_initcall+0x10c/0x170)
+[<c0008640>] (do_one_initcall+0x10c/0x170) from [<c08168f8>] (kernel_init+0x13c/0x200)
+[<c08168f8>] (kernel_init+0x13c/0x200) from [<c000fb18>] (kernel_thread_exit+0x0/0x8)
+<0>Code: bad PC value
+<4>---[ end trace e4bf4e3c0d9fbed0 ]---
+<0>Kernel panic - not syncing: Attempted to kill init! exitcode=0x0000000b
+
+<0>Rebooting in 10 seconds..
+
+解决办法：
+找到打印错误的地方：
+       drv_vbus_Handle = alloc_pin(&sw_hci->drv_vbus_gpio_set);
+815     if (drv_vbus_Handle == 0) {
+816         DMSG_PANIC("ERR: alloc_pin failed\n");
+817         //goto xfailed1;
+818     }
+819     sw_hci->drv_vbus_Handle = drv_vbus_Handle;
+将goto xfailed1;注释掉
+文进的理由是直接跳转到xfailed1会造成后面代码不执行，之后程序运行出错。他自己是先改后面的探测语句,probe语句。
+之后再将内核和模块放入内存卡，就启动OK了。
